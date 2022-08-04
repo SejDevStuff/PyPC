@@ -2,6 +2,7 @@
 # https://github.com/SejDevStuff/PyPC
 
 import sys
+import queue
 
 class Alphabet():
     def __init__(self, video, ram):
@@ -26,7 +27,7 @@ class Alphabet():
 
         self.ab["a"] = [0,1,2,400,402,800,801,802,1200,1202,1600,1602]
         self.ab["b"] = [0,1,2,400,402,800,801,802,1200,1202,1600,1601,1602]
-        self.ab["c"] = [0,1,2,400,800,1200,1600,1601,1602]
+        self.ab["c"] = [1,2,400,800,1200,1601,1602]
         self.ab["d"] = [0,1,400,402,800,802,1200,1202,1600,1601]
         self.ab["e"] = [0,1,2,400,800,801,1200,1600,1601,1602]
         self.ab["f"] = [0,1,2,400,800,801,1200,1600]
@@ -61,6 +62,19 @@ class Alphabet():
         self.ab["]"] = [0,1,2,402,802,1202,1600,1601,1602]
         self.ab[">"] = [0,401,802,1201,1600]
         self.ab["<"] = [2,401,800,1201,1602]
+        self.ab["^"] = [1,400,402]
+        self.ab["'"] = [1,401]
+        self.ab['"'] = [0,2,400,402]
+        self.ab["{"] = [1,2,401,800,1201,1601,1602]
+        self.ab["}"] = [0,1,401,802,1201,1600,1601]
+        self.ab["\\"] = [0,400,801,1201,1602]
+        self.ab["/"] = [2,402,801,1201,1600]
+        self.ab[";"] = [401,1201,1600]
+        self.ab["£"] = [1,2,400,800,801,1200,1600,1601,1602]
+        # @ and $ impossible
+        self.ab["%"] = [0,402,801,1200,1602]
+        self.ab["+"] = [401,800,801,802,1201]
+        self.ab["="] = [400,401,402,1200,1201,1202]
 
         self.ab["0"] = [1,400,402,800,802,1200,1202,1601]
         self.ab["1"] = [1,400,401,801,1201,1600,1601,1602]
@@ -125,8 +139,34 @@ class Alphabet():
         for i in range(end-start):
             self.r.write_byte_to_loc(start + i, byte)
 
+# Shift Table: what to change values to if shift is on
+ShiftTable = {
+    ord("0"): ord(")"),
+    ord("1"): ord("!"),
+    ord("2"): ord("@"),
+    ord("3"): ord("£"),
+    ord("4"): ord("$"),
+    ord("5"): ord("%"),
+    ord("6"): ord("^"),
+    ord("7"): ord("&"),
+    ord("8"): ord("*"),
+    ord("9"): ord("("),
+    ord("-"): ord("_"),
+    ord("="): ord("+"),
+    ord("["): ord("{"),
+    ord("]"): ord("}"),
+    ord(":"): ord(";"),
+    ord("'"): ord('"'),
+    ord("\\"): ord("|"),
+    ord(","): ord("<"),
+    ord("."): ord(">"),
+    ord("/"): ord("?")
+}
+
 KeyBuffer = ""
 CursorY = 30
+Shift = False
+Control = False
 
 def ParseCommands(command, alpha, v, r):
     '''
@@ -172,21 +212,44 @@ def OneLineDown(video, ram, alpha):
         ram.write_range(topline, __BYTES__)
         alpha.drawBox(10,(400-6),400,400,b'\x00')
 
-def MAIN(cpu, ram, disk, td, video):
+def MAIN(cpu, ram, disk, td, video, q: queue.Queue):
     '''
     This is the main function called by the "CPU" of PyPC when a program is loaded
     '''
-    global KeyBuffer, CursorY
+    global KeyBuffer, CursorY, Shift, Control
     alpha = Alphabet(video, ram)
     while True:
+        alpha.drawBox(200,10,400,15,b'\x00')
         alpha.print_str("OS v1.0", 10, 10)
         alpha.drawBox(10,20,390,20,b'\x01')
         alpha.print_chr(">", 10, CursorY)
         alpha.print_str(KeyBuffer, 15, CursorY)
+
+        ShiftCtrlString = ""
+        if (Shift):
+            ShiftCtrlString += "[Shift] On."
+        if (Control):
+            ShiftCtrlString += " [Control] On."
         
-        KeyPressed = video.getKeyPressed()
+        alpha.print_str(ShiftCtrlString, 200, 10)
         
-        if (KeyPressed >= 36 and KeyPressed <= 126):
+        KeyPressed = q.get()
+
+        # Change value if shift is on
+        if (Shift):
+            if KeyPressed in ShiftTable:
+                KeyPressed = ShiftTable[KeyPressed]
+                Shift = False
+        
+        # Ctrl + C
+        if (Control):
+            if KeyPressed == ord("c") or KeyPressed == ord("C"):
+                alpha.print_str("^C", 15 + (len(KeyBuffer) * 5), CursorY)
+                OneLineDown(video, ram, alpha)
+                KeyBuffer = ""
+                KeyPressed = 0
+
+        if (KeyPressed >= 33 and KeyPressed <= 126):
             if (len(KeyBuffer) < (90)):
                 KeyBuffer += chr(KeyPressed)
         if (KeyPressed == 32):
@@ -198,3 +261,7 @@ def MAIN(cpu, ram, disk, td, video):
             ParseCommands(KeyBuffer, alpha, video, ram)
             OneLineDown(video, ram, alpha)
             KeyBuffer = ""
+        if KeyPressed == 9990:
+            Control = not Control
+        if KeyPressed == 9991:
+            Shift = not Shift

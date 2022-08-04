@@ -25,7 +25,7 @@ class CPU():
         self.exec_start = start
         self.exec = True
     
-    def process_next(self):
+    def process_next(self, q):
         if (not self.exec):
             return
         
@@ -74,6 +74,6 @@ class CPU():
         m = types.ModuleType("PyPC_CPU_Module", "Standard PyPC CPU Module")
         exec(code_obj, m.__dict__)
 
-        m.MAIN(self, self.ram, self.disk, self.td, self.video)
+        m.MAIN(self, self.ram, self.disk, self.td, self.video, q)
 
         self.exec = False

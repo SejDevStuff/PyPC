@@ -7,6 +7,9 @@ import tempfile
 import os
 import threading
 import sys
+import queue
+
+Queue = queue.Queue()
 
 def main():
     print("Starting emulator...")
@@ -15,7 +18,7 @@ def main():
 
     ram = RAM.RAMDisk(rdsz)
     disk = Disk.Disk()
-    video = Video.Video(ram)
+    video = Video.Video(ram, Queue)
 
     if not os.path.exists("./Disk"):
         print("Disk doesn't exist. Creating...")
@@ -29,7 +32,7 @@ def main():
     # load bootloader
     cpu.set_exec_parameters(0)
 
-    CPU_PROCESS = threading.Thread(target=cpu.process_next, args=())
+    CPU_PROCESS = threading.Thread(target=cpu.process_next, args=(Queue,))
     CPU_PROCESS.daemon = True
     CPU_PROCESS.start()
 

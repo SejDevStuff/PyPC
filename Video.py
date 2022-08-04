@@ -1,10 +1,12 @@
 import sys
 import pygame
 import math
+import queue
 
 import RAM
 
 pygame.init()
+pygame.fastevent.init()
 
 size = (800,800)
 screen = pygame.display.set_mode(size)
@@ -14,7 +16,7 @@ class Video():
     def dbg_print(self, msg):
         print("[VIDEO] " + str(msg))
 
-    def __init__(self, ram: RAM.RAMDisk):
+    def __init__(self, ram: RAM.RAMDisk, queue: queue.Queue):
         self.init = False
         self.ram = ram
 
@@ -30,23 +32,23 @@ class Video():
             __empty_bytes__.append(b'\x00')
         self.ram.write_range(self.vram_start_addr, __empty_bytes__)
         self.dbg_print("memory address " + str(self.vram_start_addr) + " to " + str(self.vram_end_addr) + " reserved for video")
-        self.kpBuf = 0
+        
+        self.q = queue
         self.init = True
-
-    def getKeyPressed(self):
-        kp = self.kpBuf
-        self.kpBuf = 0
-        return kp
 
     def tick(self):
         if not self.init:
             return False
 
-        for event in pygame.event.get():
+        for event in pygame.fastevent.get():
             if event.type == pygame.QUIT:
                 self.init = False
             if event.type == pygame.KEYDOWN:
-                self.kpBuf = event.key
+                self.q.put(event.key)
+                if pygame.key.get_mods() & pygame.KMOD_CTRL:
+                    self.q.put(9990)
+                elif pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                    self.q.put(9991)
 
         screen.fill((0,0,0))
 
