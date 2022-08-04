@@ -1,6 +1,7 @@
 # Simple OS, made for the PyPC
 # https://github.com/SejDevStuff/PyPC
 
+import re
 import sys
 import queue
 
@@ -139,6 +140,11 @@ class Alphabet():
         for i in range(end-start):
             self.r.write_byte_to_loc(start + i, byte)
 
+class Filesystem():
+    def __init__(self, disk) -> None:
+        self.d = disk
+        self.current_fp = None
+
 # Shift Table: what to change values to if shift is on
 ShiftTable = {
     ord("0"): ord(")"),
@@ -168,29 +174,71 @@ CursorY = 30
 Shift = False
 Control = False
 
-def ParseCommands(command, alpha, v, r):
+Video = None
+RAM = None
+FileSys = None
+Alpha = None
+
+run = True
+
+def WrongParameters(reqParams):
+    OneLineDown()
+    Alpha.print_str("ERR: Wrong amount of parameters. This command requires " + str(reqParams) + " parameter/s", 10, CursorY)
+
+def ParseCommands(command):
     '''
     Simple command parsing function
     '''
     global CursorY
+    alpha = Alpha
+    v = Video
+    r = RAM
     if command.strip() == "":
         return
     else:
         cmd = command.split(" ")
         if (cmd[0] == "clear"):
+            if (len(cmd) > 1):
+                WrongParameters(0)
+                return
             alpha.drawBox(10,30,400,400,b'\x00')
             CursorY = 16
             return
+        elif (cmd[0] == "pwd"):
+            if (len(cmd) > 1):
+                WrongParameters(0)
+                return
+            OneLineDown()
+            cwd = FileSys.current_fp
+            if cwd == None:
+                cwd = "No disk is loaded. Use the 'diskld' command"
+            alpha.print_str(cwd, 10, CursorY)
+        elif (cmd[0] == "diskld"):
+            if len(cmd) != 2:
+                WrongParameters(1)
+                return
+            dsk_addr = 0
+            try:
+                dsk_addr = int(cmd[1])
+            except:
+                OneLineDown()
+                alpha.print_str("ERR: Wrong parameter. This command requires 1 parameter: [INT]DiskAddr", 10, CursorY)
+                return
+            OneLineDown()
+            alpha.print_str("Loading disk starting at byte " + str(dsk_addr) + " ...", 10, CursorY)
         else:
-            OneLineDown(v, r, alpha)
+            OneLineDown()
             alpha.print_str("ERR: Unknown command", 10, CursorY)
 
-def OneLineDown(video, ram, alpha):
+def OneLineDown():
     '''
     OneLineDown moves the cursor 1 character block down, it also takes care of moving everything up if we run out of space
     at the bottom
     '''
     global CursorY
+    video = Video
+    ram = RAM
+    alpha = Alpha
     CursorY += 14
     if (CursorY >= 400):
         '''
@@ -216,22 +264,30 @@ def MAIN(cpu, ram, disk, td, video, q: queue.Queue):
     '''
     This is the main function called by the "CPU" of PyPC when a program is loaded
     '''
-    global KeyBuffer, CursorY, Shift, Control
+    global KeyBuffer, CursorY, Shift, Control, Alpha, FileSys, Video, RAM
     alpha = Alphabet(video, ram)
-    while True:
+    fsdrv = Filesystem(disk)
+
+    Alpha = alpha
+    FileSys = fsdrv
+    Video = video
+    RAM = ram
+
+    while run:
         alpha.drawBox(200,10,400,15,b'\x00')
         alpha.print_str("OS v1.0", 10, 10)
         alpha.drawBox(10,20,390,20,b'\x01')
+
         alpha.print_chr(">", 10, CursorY)
         alpha.print_str(KeyBuffer, 15, CursorY)
 
         ShiftCtrlString = ""
         if (Shift):
-            ShiftCtrlString += "[Shift] On."
+            ShiftCtrlString += "[Shift]"
         if (Control):
-            ShiftCtrlString += " [Control] On."
+            ShiftCtrlString += " [Control]"
         
-        alpha.print_str(ShiftCtrlString, 200, 10)
+        alpha.print_str(ShiftCtrlString, 400 - (len(ShiftCtrlString) * 5), 10)
         
         KeyPressed = q.get()
 
@@ -258,8 +314,8 @@ def MAIN(cpu, ram, disk, td, video, q: queue.Queue):
             alpha.drawBox(15,CursorY,(15+(len(KeyBuffer)*5)),CursorY+5,b'\x00')
             KeyBuffer = KeyBuffer[:-1]
         if KeyPressed == 13 or KeyPressed == 10:
-            ParseCommands(KeyBuffer, alpha, video, ram)
-            OneLineDown(video, ram, alpha)
+            ParseCommands(KeyBuffer)
+            OneLineDown()
             KeyBuffer = ""
         if KeyPressed == 9990:
             Control = not Control
