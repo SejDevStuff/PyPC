@@ -1,7 +1,6 @@
 # Simple OS, made for the PyPC
 # https://github.com/SejDevStuff/PyPC
 
-import re
 import sys
 import queue
 
@@ -143,7 +142,55 @@ class Alphabet():
 class Filesystem():
     def __init__(self, disk) -> None:
         self.d = disk
-        self.current_fp = None
+        self.diskLoaded = False
+        self.diskAddrStart = 0
+        self.diskAddrEnd = 0
+
+    def sfs_init(self, addr, sz):
+        __empty__ = [b'\x01', b'\x02', b'\x03']
+        for byte in range(sz - 3):
+            __empty__.append(b'\x00')
+        self.d.write_data(addr, __empty__)
+        OneLineDown()
+        Alpha.print_str("SFS_INIT: Wrote " + str(sz) + " bytes", 10, CursorY)
+
+    def load_disk(self, addr):
+        Sz_Bytes = self.d.read_data(int(addr), int(addr) + 16)
+        Sz_Bytestring = bytearray()
+        for byte in Sz_Bytes:
+            Sz_Bytestring.append(byte)
+        Sz = int.from_bytes(Sz_Bytestring, byteorder='big')
+        OneLineDown()
+        Alpha.print_str("Disk Size: " + str(Sz), 10, CursorY)
+        NewAddr = int(addr) + 16
+        Disk = self.d.read_data(NewAddr, NewAddr + Sz)
+        MagicNumber = Disk[0:3]
+        if (MagicNumber != b'\x01\x02\x03'):
+            OneLineDown()
+            Alpha.print_str("ERR: Invalid magic bytes", 10, CursorY)
+            return
+        self.diskLoaded = True
+        self.diskAddrStart = NewAddr + 3
+        self.diskAddrEnd = NewAddr + 3 + (Sz - 3)
+        OneLineDown()
+        Alpha.print_str("Loaded disk!", 10, CursorY)
+
+    def create_disk(self, addr, sz, fs):
+        if fs.upper() not in ["SFS"]:
+            OneLineDown()
+            Alpha.print_str("ERR: Unsupported filesystem", 10, CursorY)
+            return
+        else:
+            if ((addr + 16 + sz) > Disk.diskSize):
+                OneLineDown()
+                Alpha.print_str("ERR: Disk space too large", 10, CursorY)
+                return
+            szBytes = int(sz).to_bytes(16, byteorder='big')
+            szByteArray = [i.to_bytes(1, sys.byteorder) for i in szBytes]
+            OneLineDown()
+            Alpha.print_str("Writing disk meta...", 10, CursorY)
+            self.d.write_data(int(addr), szByteArray)
+            self.sfs_init(int(addr)+16,int(sz))
 
 # Shift Table: what to change values to if shift is on
 ShiftTable = {
@@ -178,6 +225,7 @@ Video = None
 RAM = None
 FileSys = None
 Alpha = None
+Disk = None
 
 run = True
 
@@ -204,15 +252,14 @@ def ParseCommands(command):
             alpha.drawBox(10,30,400,400,b'\x00')
             CursorY = 16
             return
-        elif (cmd[0] == "pwd"):
+        elif (cmd[0] == "ls"):
             if (len(cmd) > 1):
                 WrongParameters(0)
                 return
-            OneLineDown()
-            cwd = FileSys.current_fp
-            if cwd == None:
-                cwd = "No disk is loaded. Use the 'diskld' command"
-            alpha.print_str(cwd, 10, CursorY)
+            if FileSys.diskLoaded == False:
+                OneLineDown()
+                alpha.print_str("No disk is loaded. Use the 'diskld' command to load a disk, or 'diskc' to create one", 10, CursorY)
+                return
         elif (cmd[0] == "diskld"):
             if len(cmd) != 2:
                 WrongParameters(1)
@@ -226,6 +273,45 @@ def ParseCommands(command):
                 return
             OneLineDown()
             alpha.print_str("Loading disk starting at byte " + str(dsk_addr) + " ...", 10, CursorY)
+            FileSys.load_disk(dsk_addr)
+
+        elif (cmd[0] == "diskc"):
+            if (len(cmd) != 4):
+                WrongParameters(3)
+                return
+            byte_start = 0
+            dsk_sz = 0
+            filesystem = "SFS"
+            try:
+                for arg in cmd[1:]:
+                    a, v = arg.split("=")
+                    if a == None or v == None:
+                        OneLineDown()
+                        alpha.print_str("ERR: Error parsing parameter", 10, CursorY)
+                        return
+                    if a == "--start-addr":
+                        byte_start = int(v)
+                    elif a == "--disk-sz":
+                        dsk_sz = int(v)
+                    elif a == "--fs":
+                        if v.upper() not in ["SFS"]:
+                            OneLineDown()
+                            alpha.print_str("ERR: Error 'FS' must be one of: SFS", 10, CursorY)
+                            return
+                        filesystem = v
+                OneLineDown()
+                alpha.print_str("Creating a disk of size " + str(dsk_sz) + ", at addr " + str(byte_start) + " with fstype " + str(filesystem) + " ...", 10, CursorY)
+            
+                try:
+                    FileSys.create_disk(byte_start, dsk_sz, filesystem)
+                except Exception as e:
+                    OneLineDown()
+                    alpha.print_str("ERR: Error whilst running create_disk(): " + str(e), 10, CursorY)
+
+            except:
+                OneLineDown()
+                alpha.print_str("ERR: This command requires 3 parameters. [INT]StartAddr, [INT]DiskSz, [CHAR]FileSystem", 10, CursorY)
+                return
         else:
             OneLineDown()
             alpha.print_str("ERR: Unknown command", 10, CursorY)
@@ -264,7 +350,7 @@ def MAIN(cpu, ram, disk, td, video, q: queue.Queue):
     '''
     This is the main function called by the "CPU" of PyPC when a program is loaded
     '''
-    global KeyBuffer, CursorY, Shift, Control, Alpha, FileSys, Video, RAM
+    global KeyBuffer, CursorY, Shift, Control, Alpha, FileSys, Video, RAM, Disk
     alpha = Alphabet(video, ram)
     fsdrv = Filesystem(disk)
 
@@ -272,6 +358,7 @@ def MAIN(cpu, ram, disk, td, video, q: queue.Queue):
     FileSys = fsdrv
     Video = video
     RAM = ram
+    Disk = disk
 
     while run:
         alpha.drawBox(200,10,400,15,b'\x00')
@@ -301,7 +388,7 @@ def MAIN(cpu, ram, disk, td, video, q: queue.Queue):
         if (Control):
             if KeyPressed == ord("c") or KeyPressed == ord("C"):
                 alpha.print_str("^C", 15 + (len(KeyBuffer) * 5), CursorY)
-                OneLineDown(video, ram, alpha)
+                OneLineDown()
                 KeyBuffer = ""
                 KeyPressed = 0
 
