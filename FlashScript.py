@@ -3,8 +3,14 @@ import os
 import sys
 import tempfile
 import Disk
+import python_minifier
 
 td = tempfile.TemporaryDirectory()
+
+minify = True
+
+if "nominify" in sys.argv:
+    minify = False
 
 fp1 = None
 if (len(sys.argv) < 3):
@@ -36,10 +42,23 @@ if not (disk.load_disk(dp)):
     print("E3: Cannot load disk")
     sys.exit(1)
 
+_Uncompiled = os.path.join(td.name, os.path.basename(fp1))
 _Compiled = os.path.join(td.name, os.path.basename(fp1) + ".pyc")
+
+if minify:
+    print("Minifying ...")
+    with open(fp1, "r") as f:
+        with open(_Uncompiled, "w") as g:
+            g.write(python_minifier.minify(f.read(), remove_literal_statements=True, rename_globals=True, preserve_globals=["MAIN"]))
+    print("Minified File Path: " + str(_Uncompiled))
+else:
+    with open(fp1, "r") as f:
+        with open(_Uncompiled, "w") as g:
+            g.write(f.read())
+    print("Source file path: " + str(_Uncompiled))
 print("Compiled File Path: " + str(_Compiled))
 
-py_compile.compile(fp1, _Compiled)
+py_compile.compile(_Uncompiled, _Compiled)
 
 __byte_arr__ = []
 
