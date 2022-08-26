@@ -162,7 +162,7 @@ class Filesystem():
         OneLineDown()
         Alpha.print_str("SFS_INIT: Wrote " + str(sz) + " bytes", 10, CursorY)
 
-    def get_entry_list(self):
+    def get_entry_list(self, silence_dfrag = False):
         entryList = {"Entries":[], "LastAddr":0}
         self.load_entries()
         Disk = self.d.read_data(self.diskAddrStart + 8, self.diskAddrEnd)
@@ -190,12 +190,12 @@ class Filesystem():
                         entrySz_ByteString.append(eb)
                     entrySz = int.from_bytes(entrySz_ByteString, byteorder='big')
                     entries_read += 1
-                    entryList["Entries"].append({"EntryName":entry_name, "EntryAddr":entry_start, "EntrySz":len(entry_name)+2+8+entrySz})
+                    entryList["Entries"].append({"EntryName":entry_name, "EntryAddr":entry_start, "EntrySz":len(entry_name)+2+8+entrySz, "DataAddr": addr + 8, "DataSz": entrySz})
                     addr += entrySz + 8
                     entry_name = ""
             else:
                 if byte == b'\x00':
-                    if not defrag_warning_set and (entries_read > 0) and (entries_read != self.entries):
+                    if not defrag_warning_set and (entries_read > 0) and (entries_read != self.entries) and not silence_dfrag:
                         OneLineDown()
                         Alpha.print_str("[!] You need to defrag your disk, run 'diskdefrag' when you can", 10, CursorY)
                         defrag_warning_set = True
@@ -222,15 +222,40 @@ class Filesystem():
         OneLineDown()
         Alpha.print_str("Defragmenting disk ...", 10, CursorY)
         disk = []
-        _fragdisk = self.d.read_data(self.diskAddrStart, self.diskAddrEnd)
+        _fragdisk = self.d.read_data(self.diskAddrStart + 8, self.diskAddrEnd)
         _fragdisk_bytes = [i.to_bytes(1, sys.byteorder) for i in _fragdisk]
-        for byte in _fragdisk_bytes:
-            if byte != b"\x00":
-                disk.append(byte)
-        BytesAtEnd = (self.diskAddrEnd - self.diskAddrStart) - len(disk)
+        entryList = self.get_entry_list(True)
+        for addr, byte in enumerate(_fragdisk_bytes):
+            entryByte = False
+            for entry in entryList["Entries"]:
+                if addr >= entry["EntryAddr"] and addr < entry["EntryAddr"] + entry["EntrySz"]:
+                    disk.append(byte)
+                    entryByte = True
+            if not entryByte:
+                if byte != b"\x00":
+                    disk.append(byte)
+        BytesAtEnd = (self.diskAddrEnd - self.diskAddrStart + 8) - len(disk)
         for i in range(BytesAtEnd):
             disk.append(b"\x00")
-        self.d.write_data(self.diskAddrStart, disk)
+        self.d.write_data(self.diskAddrStart + 8, disk)
+
+    def get_contents_of_file(self, fn):
+        entryList = self.get_entry_list()
+        fileExists = False
+        dataAddr = 0
+        dataSz = 0
+        for entry in entryList["Entries"]:
+            name = entry["EntryName"]
+            if fn == name:
+                fileExists = True
+                dataAddr = entry["DataAddr"]
+                dataSz = entry["DataSz"]
+                break
+        if not fileExists:
+            OneLineDown()
+            Alpha.print_str("ERR: File does not exist", 10, CursorY)
+            return
+        return self.d.read_data(self.diskAddrStart + 8 + dataAddr, self.diskAddrStart + 8 + dataAddr + dataSz).decode()
 
     def remove_file(self, fn):
         entryList = self.get_entry_list()
@@ -506,6 +531,40 @@ def ParseCommands(command):
                 alpha.print_str("No disk is loaded. Use the 'diskld' command to load a disk, or 'diskc' to create one", 10, CursorY)
                 return
             FileSys.defrag_dsk()
+        
+        elif (cmd[0] == "read"):
+            if (len(cmd) != 2):
+                WrongParameters(1)
+                return
+            if FileSys.diskLoaded == False:
+                OneLineDown()
+                alpha.print_str("No disk is loaded. Use the 'diskld' command to load a disk, or 'diskc' to create one", 10, CursorY)
+                return
+            contents = FileSys.get_contents_of_file(cmd[1])
+            if contents != None:
+                OneLineDown()
+                alpha.print_str(contents, 10, CursorY)
+
+        elif (cmd[0] == "create"):
+            if (len(cmd) != 3):
+                WrongParameters(2)
+                return
+            if FileSys.diskLoaded == False:
+                OneLineDown()
+                alpha.print_str("No disk is loaded. Use the 'diskld' command to load a disk, or 'diskc' to create one", 10, CursorY)
+                return
+            FileSys.create_file(cmd[1], cmd[2])
+        
+        elif (cmd[0] == "rm"):
+            if (len(cmd) != 2):
+                WrongParameters(1)
+                return
+            if FileSys.diskLoaded == False:
+                OneLineDown()
+                alpha.print_str("No disk is loaded. Use the 'diskld' command to load a disk, or 'diskc' to create one", 10, CursorY)
+                return
+            FileSys.remove_file(cmd[1])
+
         else:
             OneLineDown()
             alpha.print_str("ERR: Unknown command", 10, CursorY)
@@ -556,7 +615,7 @@ def MAIN(cpu, ram, disk, td, video, q: queue.Queue):
 
     while run:
         alpha.drawBox(200,10,400,15,b'\x00')
-        alpha.print_str("OS v1.0", 10, 10)
+        alpha.print_str("OS v2.0", 10, 10)
         alpha.drawBox(10,20,390,20,b'\x01')
 
         alpha.print_chr(">", 10, CursorY)
@@ -576,7 +635,7 @@ def MAIN(cpu, ram, disk, td, video, q: queue.Queue):
         if (Shift):
             if KeyPressed in ShiftTable:
                 KeyPressed = ShiftTable[KeyPressed]
-                Shift = False
+            Shift = False
         
         # Ctrl + C
         if (Control):
@@ -585,6 +644,7 @@ def MAIN(cpu, ram, disk, td, video, q: queue.Queue):
                 OneLineDown()
                 KeyBuffer = ""
                 KeyPressed = 0
+            Control = False
 
         if (KeyPressed >= 33 and KeyPressed <= 126):
             if (len(KeyBuffer) < (90)):
@@ -595,12 +655,11 @@ def MAIN(cpu, ram, disk, td, video, q: queue.Queue):
             alpha.drawBox(15,CursorY,(15+(len(KeyBuffer)*5)),CursorY+5,b'\x00')
             KeyBuffer = KeyBuffer[:-1]
         if KeyPressed == 13 or KeyPressed == 10:
-            ParseCommands(KeyBuffer)
-            # try:
-            #     ParseCommands(KeyBuffer)
-            # except Exception as e:
-            #     OneLineDown()
-            #     alpha.print_str("Error whilst running command: " + str(e), 10, CursorY)
+            try:
+                ParseCommands(KeyBuffer)
+            except Exception as e:
+                OneLineDown()
+                alpha.print_str("Error whilst running command: " + str(e), 10, CursorY)
             OneLineDown()
             OneLineDown()
             KeyBuffer = ""

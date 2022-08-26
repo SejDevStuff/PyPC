@@ -88,7 +88,7 @@ class Disk():
                 self.dbg_print("read_data: invalid end_addr")
                 return None
             
-            self.dbg_print("read_data: reading bytes " + str(start_addr) + " -> " + str(end_addr))
+            #self.dbg_print("read_data: reading bytes " + str(start_addr) + " -> " + str(end_addr))
 
             with open(self.diskPath, "rb") as f:
                 f.seek(start_addr)
