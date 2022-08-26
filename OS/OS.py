@@ -218,6 +218,55 @@ class Filesystem():
             OneLineDown()
             Alpha.print_str(entry["EntryName"], 10, CursorY)
 
+    def defrag_dsk(self):
+        OneLineDown()
+        Alpha.print_str("Defragmenting disk ...", 10, CursorY)
+        disk = []
+        _fragdisk = self.d.read_data(self.diskAddrStart, self.diskAddrEnd)
+        _fragdisk_bytes = [i.to_bytes(1, sys.byteorder) for i in _fragdisk]
+        for byte in _fragdisk_bytes:
+            if byte != b"\x00":
+                disk.append(byte)
+        BytesAtEnd = (self.diskAddrEnd - self.diskAddrStart) - len(disk)
+        for i in range(BytesAtEnd):
+            disk.append(b"\x00")
+        self.d.write_data(self.diskAddrStart, disk)
+
+    def remove_file(self, fn):
+        entryList = self.get_entry_list()
+        fileExists = False
+        entryAddr = 0
+        entrySz = 0
+        for entry in entryList["Entries"]:
+            name = entry["EntryName"]
+            if fn == name:
+                fileExists = True
+                entryAddr = entry["EntryAddr"]
+                entrySz = entry["EntrySz"]
+                break
+        if not fileExists:
+            OneLineDown()
+            Alpha.print_str("ERR: File does not exist", 10, CursorY)
+            return
+        
+        OneLineDown()
+        Alpha.print_str("Deleting file '" + str(fn) + "'", 10, CursorY)
+
+        # Zero out the entry
+        __empty_bytes__ = []
+        for i in range(entrySz):
+            __empty_bytes__.append(b"\x00")
+        self.d.write_data(self.diskAddrStart + 8 + entryAddr, __empty_bytes__)
+
+        # Update entry list
+        self.entries -= 1
+        entriesBytes = int(self.entries).to_bytes(8, byteorder='big')
+        entriesByteArray = [i.to_bytes(1, sys.byteorder) for i in entriesBytes]
+        self.d.write_data(self.diskAddrStart, entriesByteArray)
+
+        # Defrag Disk
+        self.defrag_dsk()
+
     def create_file(self, fn, data):
         entryList = self.get_entry_list()
 
@@ -450,6 +499,13 @@ def ParseCommands(command):
                 OneLineDown()
                 alpha.print_str("ERR: This command requires 3 parameters. [INT]StartAddr, [INT]DiskSz, [CHAR]FileSystem", 10, CursorY)
                 return
+        
+        elif (cmd[0] == "diskdefrag"):
+            if FileSys.diskLoaded == False:
+                OneLineDown()
+                alpha.print_str("No disk is loaded. Use the 'diskld' command to load a disk, or 'diskc' to create one", 10, CursorY)
+                return
+            FileSys.defrag_dsk()
         else:
             OneLineDown()
             alpha.print_str("ERR: Unknown command", 10, CursorY)

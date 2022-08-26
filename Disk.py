@@ -27,8 +27,8 @@ class Disk():
             
             self.dbg_print("create_disk: done")
             return True
-        except:
-            self.dbg_print("create_disk: uncaught exception")
+        except Exception as e:
+            self.dbg_print("create_disk: uncaught exception. " + str(e))
     
     def load_disk(self, diskpath):
         try:
@@ -73,8 +73,8 @@ class Disk():
             self.diskPath = os.path.join(diskpath, "DSK")
             self.dbg_print("load_disk: disk loaded successfully")
             return True
-        except:
-            self.dbg_print("load_disk: uncaught exception")
+        except Exception as e:
+            self.dbg_print("load_disk: uncaught exception. " + str(e))
 
     def read_data(self, start_addr = 0, end_addr = 1):
         try:
@@ -95,7 +95,7 @@ class Disk():
                 return f.read(end_addr - start_addr)
             
         except Exception as e:
-            self.dbg_print("read_data: uncaught exception")
+            self.dbg_print("read_data: uncaught exception. " + str(e))
 
     def write_data(self, addr = 0, byte_arr = [b'\x00']):
         try:
@@ -121,7 +121,7 @@ class Disk():
             return True
 
         except Exception as e:
-            self.dbg_print("write_data: uncaught exception")
+            self.dbg_print("write_data: uncaught exception. " + str(e))
 
     def reset(self):
         self.diskName = None

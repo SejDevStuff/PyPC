@@ -1,13 +1,12 @@
 Modified OS.py
 
-- [FSDrv] Wrote prototype working create_file() implementation. 
+- [FSDrv] Wrote prototype working remove_file() implementation. 
 The function can be called and used via code, but a command to wrap the function is not yet available.
 
-- Added 'ls' command. 
-This command will list the contents of the disk.
+- [FSDrv] Wrote prototype working defrag_dsk() implementation. 
+The function can be called and used via code or via the "diskdefrag" command.
 
-Modified FlashScript.py
+Modified Disk.py
 
-- Added minify support.
-FlashScript now tries to save as much space as possible (and also protects the source code a bit) by minifying your source code before compiling it.
-You can pass the "nominify" argument to the command to tell FlashScript to not minify your code.
+- Better error messages.
+Disk Errors now say the cause of the exception, rather than just saying "uncaught exception"
